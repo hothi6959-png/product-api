@@ -1,0 +1,76 @@
+name: Product API CD - Docker Hub
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Check JavaScript syntax
+        run: node --check server.js
+
+      - name: Create test environment
+        run: |
+          printf 'PORT=3000\nMONGO_URI=mongodb://mongodb:27017/productdb\n' > .env
+
+      - name: Start application and MongoDB
+        run: docker compose up -d --build
+
+      - name: Wait for healthchecks
+        shell: bash
+        run: |
+          for i in $(seq 1 30); do
+            mongo_id=$(docker compose ps -q mongodb)
+            api_id=$(docker compose ps -q product-api)
+
+            mongo_status="starting"
+            api_status="starting"
+
+            if [ -n "$mongo_id" ]; then
+              mongo_status=$(docker inspect \
+                --format='{{.State.Health.Status}}' "$mongo_id" 2>/dev/null || echo starting)
+            fi
+
+            if [ -n "$api_id" ]; then
+              api_status=$(docker inspect \
+                --format='{{.State.Health.Status}}' "$api_id" 2>/dev/null || echo starting)
+            fi
+
+            echo "MongoDB: $mongo_status | Product API: $api_status"
+
+            if [ "$mongo_status" = "healthy" ] && [ "$api_status" = "healthy" ]; then
+              curl --fail http://localhost:3000/products
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          docker compose ps
+          docker compose logs
+          exit 1
+
+      - name: Stop test containers
+        if: always()
+        run: docker compose down
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/product-api:latest
