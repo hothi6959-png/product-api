@@ -95,3 +95,13 @@ jobs:
           context: .
           push: true
           tags: ${{ vars.DOCKERHUB_USERNAME }}/product-api:latest
+      - name: Deploy to local Docker Engine
+        shell: powershell
+        run: |
+          docker compose -f docker-compose-prod.yaml pull
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+          docker compose -f docker-compose-prod.yaml up -d
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+          docker compose -f docker-compose-prod.yaml ps
