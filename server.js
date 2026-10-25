@@ -12,14 +12,7 @@ mongoose.connect(process.env.MONGO_URI)
     .catch(err => console.error('MongoDB connection error:', err));
 
 // Model Product
-const productSchema = new mongoose.Schema({
-    pid: { type: Number, required: true, unique: true },
-    pname: { type: String, required: true },
-    price: { type: Number, required: true, min: 0 },
-    quantity: { type: Number, required: true, min: 0 }
-});
-
-const Product = mongoose.model('Product', productSchema);
+const Product = require('./models/Product');
 
 // CREATE: Thêm sản phẩm
 app.post('/products', async (req, res) => {
@@ -87,6 +80,23 @@ app.delete('/products/:pid', async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
+
+app.get('/health', async (req, res) => {
+    const dbConnected = mongoose.connection.readyState === 1;
+
+    if (dbConnected) {
+        return res.status(200).json({
+            status: 'OK',
+            database: 'connected'
+        });
+    }
+
+    return res.status(503).json({
+        status: 'ERROR',
+        database: 'disconnected'
+    });
+});
+
 
 // Khởi động server sau khi kết nối MongoDB thành công
 mongoose.connection.once('open', () => {
